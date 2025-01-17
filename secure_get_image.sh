@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Configurazione
+# Configuration
 OUTPUT_DIR="/media/data/resources/scambio/tmp/images"
 LOG_FILE="$HOME/log/secure_get_image.log"
 FRAME_DELAY=0.9
@@ -10,13 +10,13 @@ RESOLUTION="1280x720"
 FUZZY_VALUE="10%"
 LOW_THRESHOLD=400
 LOW_THRESHOLD_ACTIVATION=200
-VARIATION_AVERAGE_THRESHOLD=80 # soglia percentuale sulla variazione per far partire la registrazione
+VARIATION_AVERAGE_THRESHOLD=80 # percentage threshold on variation to start recording
 LOW_VARIATION_AVERAGE_THRESHOLD=10
 VARIATION_HISTORY_SIZE=30
 SECONDS_BETWEEN_IMAGES_CLEANUP_CHECK=3600
 COMPARE_IMAGE_ERROR=false
 
-# Creazione directory e file di log
+# Create directories and log file
 mkdir -p "$OUTPUT_DIR"
 mkdir -p "$(dirname "$LOG_FILE")"
 touch "$LOG_FILE"
@@ -33,13 +33,13 @@ capture_frame() {
     fswebcam -r "$RESOLUTION" --fps 30 --jpeg 95 -d /dev/video0 "$output_file" >/dev/null 2>&1
 }
 
-# File temporanei
+# Temporary files
 IMAGE_prev=$(mktemp --suffix=.$IMAGE_FORMAT)
 IMAGE_now=$(mktemp --suffix=.$IMAGE_FORMAT)
 IMAGE_prev_processed=$(mktemp --suffix=.$IMAGE_FORMAT)
 IMAGE_now_processed=$(mktemp --suffix=.$IMAGE_FORMAT)
 
-# Variabile per tracciare l'ultima esecuzione di pulizia
+# Variable to track the last cleanup execution
 last_cleanup_time=$(date +%s)
 
 delete_old_files() {
@@ -47,31 +47,31 @@ delete_old_files() {
     if (( current_time - last_cleanup_time >= $SECONDS_BETWEEN_IMAGES_CLEANUP_CHECK )); then
         deleted_files=$(find "$OUTPUT_DIR" -type f -name "*.$IMAGE_FORMAT" -mtime +"$FILE_RETENTION_DAYS" -print -exec rm -f {} \;)
         if [ -n "$deleted_files" ]; then
-            log "File eliminati: $deleted_files"
+            log "Deleted files: $deleted_files"
         else
-            log "Nessun file eliminato durante la pulizia."
+            log "No files deleted during cleanup."
         fi
         last_cleanup_time=$current_time
     fi
 }
 
-# Verifica dipendenze
+# Check dependencies
 for cmd in fswebcam compare magick bc; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
-        log "Errore: comando $cmd non trovato"
+        log "Error: command $cmd not found"
         exit 1
     fi
 done
 
-trap 'log "Terminazione script..."; rm -f "$IMAGE_prev" "$IMAGE_now" "$IMAGE_prev_processed" "$IMAGE_now_processed"; exit 0' SIGINT SIGTERM EXIT
+trap 'log "Script termination..."; rm -f "$IMAGE_prev" "$IMAGE_now" "$IMAGE_prev_processed" "$IMAGE_now_processed"; exit 0' SIGINT SIGTERM EXIT
 
 log "*** START ***"
 
-# Acquisizione iniziale
+# Initial capture
 if capture_frame "$IMAGE_prev"; then
-    log "Acquisizione iniziale completata."
+    log "Initial capture completed."
 else
-    log "Errore nell'acquisizione iniziale con fswebcam."
+    log "Error in initial capture with fswebcam."
     exit 1
 fi
 
@@ -85,9 +85,9 @@ log "FILE_RETENTION_DAYS: $FILE_RETENTION_DAYS"
 log "RESOLUTION: $RESOLUTION"
 log "FUZZY_VALUE: $FUZZY_VALUE"
 
-log "Avvio monitoraggio movimento..."
+log "Starting motion monitoring..."
 
-# Buffer per memorizzare le ultime variazioni
+# Buffer to store the latest variations
 variation_history=()
 total_variation=0
 index=0
@@ -97,7 +97,7 @@ while true; do
     sleep "$FRAME_DELAY"
 
     if ! capture_frame "$IMAGE_now"; then
-        log "Errore nell'acquisizione del frame."
+        log "Error in frame capture."
         continue
     fi
 
@@ -108,7 +108,7 @@ while true; do
     diff=0
     diff=$(compare -fuzz "$FUZZY_VALUE" -metric AE "$IMAGE_prev_processed" "$IMAGE_now_processed" null: 2>&1)
     
-    # Aggiorna il buffer delle variazioni
+    # Update the variation buffer
     if [ ${#variation_history[@]} -ge $VARIATION_HISTORY_SIZE ]; then
         total_variation=$((total_variation - variation_history[index]))
         variation_history[index]=$diff
@@ -118,14 +118,14 @@ while true; do
     total_variation=$((total_variation + diff))
     index=$(( (index + 1) % VARIATION_HISTORY_SIZE ))
 
-    # Calcola la media delle ultime variazioni
+    # Calculate the average of the latest variations
     if [ ${#variation_history[@]} -eq 0 ]; then
         mean=0
     else
         mean=$((total_variation / ${#variation_history[@]}))
     fi
 
-    # Calcola la variazione percentuale
+    # Calculate the percentage variation
     if [ $mean -eq 0 ]; then
             average_variation=0
     else
@@ -139,7 +139,7 @@ while true; do
     #if [ "$capturing" = false ] && [ "$(echo "$average_variation > $VARIATION_AVERAGE_THRESHOLD" | bc)" -eq 1 ] && [ $diff -gt $LOW_THRESHOLD  ] ; then
     if [ "$capturing" = false ] && [ "$(echo "$average_variation > $VARIATION_AVERAGE_THRESHOLD" | bc)" -eq 1 ] && [ "$(echo "$diff > $LOW_THRESHOLD_ACTIVATION" | bc)" -eq 1 ]  ; then
         capturing=true
-        log "Inizio acquisizione. Differenza: $diff (average_variation: $average_variation)"
+        log "Starting capture. Difference: $diff (average_variation: $average_variation)"
     fi
 
     if [ "$capturing" = true ]; then
@@ -150,16 +150,16 @@ while true; do
 
     if [ "$capturing" = true ] && ( [ "$diff" -lt "$LOW_THRESHOLD" ] || [ "$(echo "$average_variation < $LOW_VARIATION_AVERAGE_THRESHOLD" | bc)" -eq 1 ] ); then
         capturing=false
-        log "Interruzione acquisizione. Differenza: $diff"
+        log "Stopping capture. Difference: $diff"
     fi
 
-    # Scambia i frame
+    # Swap frames
     tmp_PREV=$IMAGE_prev
     IMAGE_prev=$IMAGE_now
     IMAGE_now=$tmp_PREV
 #     cp $IMAGE_now $IMAGE_prev
 
-    # Pulizia dei file vecchi (una volta ogni ora)
+    # Cleanup old files (once every hour)
     delete_old_files
 done
 

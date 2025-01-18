@@ -14,3 +14,7 @@ Author: Marco Righi
 Email: marco.righi@cnr.it
 Website: https://github.com/marcorighi/personalsecurewebcam
 
+
+If you use this code please reference the following DOI:
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14679457.svg)](https://doi.org/10.5281/zenodo.14679457)
